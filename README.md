@@ -22,8 +22,8 @@ The website pages live in the separate `frontend` repository.
 | Phase | Work | State |
 |---|---|---|
 | 1 | Database schema (26 tables), demo data, basic queries | Done |
-| 2 | Advanced SQL: views, functions, procedures, triggers, events, indexes | Next |
-| 3 | Express API | Planned |
+| 2 | Advanced SQL: views, functions, procedures, triggers, events, indexes | Done |
+| 3 | Express API | Next |
 | 4 | Frontend | Planned |
 
 ## Folder structure
@@ -36,8 +36,15 @@ backend/
 `-- database/               everything about MySQL, see database/README.md
     |-- schema/             CREATE TABLE files, one per topic
     |-- seed/               demo data
-    |-- queries/basic/      SELECT, INSERT, UPDATE, DELETE and integrity examples
-    |-- scripts/            setup and reset scripts
+    |-- views/              saved queries the pages read
+    |-- functions/          small calculations
+    |-- procedures/         actions that need several steps and a transaction
+    |-- indexes/            extra indexes
+    |-- triggers/           rules and automatic updates
+    |-- events/             scheduled jobs
+    |-- security/           database users and privileges (run by hand)
+    |-- queries/            basic and advanced example queries
+    |-- scripts/            setup, reset, backup and restore scripts
     `-- build/              the whole database joined into one file for Workbench
 ```
 
