@@ -85,6 +85,12 @@ const TRACKED_TABLES = [
     ['post_comments', 'comment_id'],
     ['vacancy_posts', 'post_id'],        // its post_seats rows are deleted with it (CASCADE)
     ['seat_wanted_posts', 'wanted_id'],
+    ['reviews', 'review_id'],
+    ['visit_requests', 'visit_id'],
+    ['complaints', 'complaint_id'],
+    ['payments', 'payment_id'],
+    ['rent_dues', 'due_id'],
+    ['mess_members', 'member_id'],       // a seat that was booked by a test must be set free again by that test
     ['seat_rent_log', 'log_id'],
     ['seats', 'seat_id'],
     ['rooms', 'room_id'],
@@ -106,7 +112,13 @@ async function restoreSnapshot(snapshot) {
     }
 }
 
+// Today by the clock of the database (the dues and the demo data use the same clock).
+async function today() {
+    const rows = await query("SELECT DATE_FORMAT(CURDATE(), '%Y-%m-%d') AS day");
+    return rows[0].day;
+}
+
 module.exports = {
     startServer, request, loginAs, registerUser, uniqueNumber, deleteTestUser, closePool, query,
-    takeSnapshot, restoreSnapshot, DEMO_PASSWORD,
+    takeSnapshot, restoreSnapshot, today, DEMO_PASSWORD,
 };

@@ -23,7 +23,7 @@ The website pages live in the separate `frontend` repository.
 |---|---|---|
 | 1 | Database schema (26 tables), demo data, basic queries | Done |
 | 2 | Advanced SQL: views, functions, procedures, triggers, events, indexes | Done |
-| 3 | Express API | In progress: login, messes, manager setup, newsfeed and Interested done |
+| 3 | Express API | In progress: everything except chat and the admin part is done |
 | 4 | Frontend | Planned |
 
 ## Run the API
@@ -126,3 +126,32 @@ All these need a manager login. A manager can reach only his own mess, rooms and
 | `GET /manager/rooms-seats` | The Room-wise seats page: every room with its seats and who lives in them. |
 | `POST /manager/posts`, `GET /manager/posts`, `PATCH /manager/posts/:id/close` | Vacancy posts: `{ "title", "description", "available_from", "seat_ids": [19, 18] }`. |
 | `GET /manager/interests` | The students who are interested in his mess. |
+
+### Manager: members, rent and payments
+
+The Members page. The work is done by the procedures `sp_add_member`, `sp_mark_member_left` and `sp_record_payment`, so each action is one transaction.
+
+| Method and address | What it does |
+|---|---|
+| `GET /manager/dashboard` | The overview cards, the 5 members who owe the most, and a little activity. |
+| `GET /manager/members` | Active members with rent numbers. Filters: `status=active or left`, `month_status`, `with_dues=1`, `q`, `sort`. Also returns `summary` for the filter chips. |
+| `GET /manager/members/ex` | Ex-members with the full story (months stayed, paid, left owing). |
+| `GET /manager/members/:id` | One member: every monthly due with what was paid, and every payment. |
+| `POST /manager/members` | Give a seat to a person. `student_id` links an account (then name, phone and gender come from it). |
+| `PATCH /manager/members/:id/leave` | The member leaves, the seat is free again. |
+| `GET /manager/students/search?q=` | Find student accounts to link, with a flag if the gender fits the mess. |
+| `POST /manager/payments` | Record money received. Without `due_id` it is an advance. A due can be paid in parts. |
+| `GET /manager/payments`, `GET /manager/dues`, `GET /manager/dues/overdue` | Payment history, all dues and the overdue ones. |
+
+### Visits, reviews, complaints, notifications and the student's own pages
+
+| Method and address | Who | What it does |
+|---|---|---|
+| `POST /visits`, `GET /visits/my`, `PATCH /visits/:id/cancel` | student | Ask for a visit, see the requests, cancel one. |
+| `GET /manager/visits`, `PATCH /manager/visits/:id/confirm`, `.../reject`, `.../complete` | manager | Answer the visit requests. |
+| `POST /reviews` | student | Review a mess he lived in (one per mess). |
+| `GET /manager/reviews`, `PATCH /manager/reviews/:id/reply` | manager | Read the reviews, reply once. |
+| `GET /me/membership`, `GET /me/dues`, `GET /me/payments` | student | The My mess page: his mess, his rent month by month, his payments. |
+| `POST /complaints`, `GET /complaints/my` | student, manager | Complain about a mess or a person, see own complaints. |
+| `GET /notifications`, `PATCH /notifications/:id/read`, `PATCH /notifications/read-all` | everybody logged in | Notifications with `unread_count` for the bell. |
+| `PATCH /auth/me`, `PATCH /auth/password` | everybody logged in | Change name, phone, profile details and password. |

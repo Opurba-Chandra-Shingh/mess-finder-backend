@@ -8,6 +8,8 @@ router.use('/reference', require('./reference.routes'));
 router.use('/manager', require('./manager.routes'));
 router.use('/interests', require('./interest.routes'));
 router.use('/', require('./newsfeed.routes'));   // /newsfeed, /seat-wanted, /posts/.../comments, /comments/:id
+router.use('/', require('./student.routes'));    // /me/..., /reviews, /visits
+router.use('/', require('./account.routes'));    // /notifications, /complaints
 
 // GET /api/health: is the server up and can it reach MySQL?
 router.get('/health', async (req, res) => {

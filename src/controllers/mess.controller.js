@@ -4,6 +4,7 @@ const { query } = require('../config/db');
 const AppError = require('../utils/app-error');
 const check = require('../utils/validate');
 const { groupRoomsAndSeats } = require('../utils/room-seats');
+const { listReviews } = require('../utils/review-queries');
 
 // Ways to sort the list. The website sends a word, we pick the SQL from this list,
 // so nothing the user types ever becomes part of the SQL text.
@@ -324,32 +325,7 @@ async function reviews(req, res) {
     await loadVisibleMess(messId, req.user);
     const page = check.integer(req.query.page, 'Page', { fallback: 1, max: 100000 });
     const limit = check.integer(req.query.limit, 'Limit', { fallback: 10, max: 50 });
-
-    const totalRows = await query('SELECT COUNT(*) AS total FROM reviews WHERE mess_id = ?', [messId]);
-
-    // "Current member" or "Ex-member" is worked out from the member rows
-    const rows = await query(
-        `SELECT r.review_id, r.rating, r.cleanliness_rating, r.safety_rating, r.food_rating,
-                r.comment, r.manager_reply, r.replied_at, r.created_at,
-                u.full_name AS reviewer_name,
-                CASE WHEN EXISTS (SELECT 1
-                                    FROM mess_members AS m
-                                    JOIN seats AS s  ON s.seat_id  = m.seat_id
-                                    JOIN rooms AS rm ON rm.room_id = s.room_id
-                                   WHERE m.student_id = r.student_id
-                                     AND rm.mess_id = r.mess_id
-                                     AND m.status = 'active')
-                     THEN 'Current member' ELSE 'Ex-member' END AS reviewer_type
-           FROM reviews AS r
-           JOIN users AS u ON u.user_id = r.student_id
-          WHERE r.mess_id = ?
-          ORDER BY r.created_at DESC
-          LIMIT ? OFFSET ?`,
-        [messId, limit, (page - 1) * limit]
-    );
-
-    const total = totalRows[0].total;
-    res.json({ data: rows, page, limit, total, total_pages: Math.ceil(total / limit) });
+    res.json(await listReviews(messId, page, limit));
 }
 
 module.exports = { list, nearby, details, history, seats, reviews };

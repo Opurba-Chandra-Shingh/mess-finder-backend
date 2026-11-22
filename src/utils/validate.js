@@ -106,6 +106,28 @@ function date(value, name) {
     return checked;
 }
 
+// A date and time like 2026-12-01 18:30 (also 2026-12-01T18:30 or with seconds).
+// Returns it in the form MySQL likes: 2026-12-01 18:30:00
+function dateTime(value, name) {
+    const checked = text(String(value ?? ''), name, { max: 25 });
+    const match = checked.match(/^(\d{4}-\d{2}-\d{2})[ T](\d{2}):(\d{2})(?::(\d{2}))?$/);
+    if (!match) throw new AppError(400, `${name} must be a date and time like 2026-12-01 18:30`);
+    const day = date(match[1], name);
+    const hour = Number(match[2]);
+    const minute = Number(match[3]);
+    const second = Number(match[4] || 0);
+    if (hour > 23 || minute > 59 || second > 59) {
+        throw new AppError(400, `${name} must be a date and time like 2026-12-01 18:30`);
+    }
+    return `${day} ${match[2]}:${match[3]}:${String(second).padStart(2, '0')}`;
+}
+
+// A whole number that may be missing. Returns null when it was not sent.
+function optionalInteger(value, name, options) {
+    if (value === undefined || value === null || value === '') return null;
+    return integer(value, name, options);
+}
+
 // A list of whole numbers sent as a JSON array, for example [1, 4, 5]. Duplicates are removed.
 function integerArray(value, name, { max = 100 } = {}) {
     if (value === undefined || value === null) return [];
@@ -117,5 +139,5 @@ function integerArray(value, name, { max = 100 } = {}) {
 
 module.exports = {
     text, optionalText, email, phone, password, oneOf, integer, optionalNumber, number, idList,
-    flag, date, integerArray,
+    flag, date, dateTime, optionalInteger, integerArray,
 };

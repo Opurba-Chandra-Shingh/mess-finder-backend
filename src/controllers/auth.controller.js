@@ -101,9 +101,88 @@ async function login(req, res) {
 
 // GET /api/auth/me  (needs a token)
 async function me(req, res) {
+    res.json(await loadMe(req.user.id));
+}
+
+// PATCH /api/auth/me
+// Changes the name and phone, and the profile details of the role:
+// student: university_id, student_roll, department. manager: address.
+// Email, role and gender cannot be changed here. Only the fields that are sent are changed.
+async function updateProfile(req, res) {
+    const body = req.body || {};
+    const userId = req.user.id;
+
+    const changes = [];
+    const values = [];
+    if (body.full_name !== undefined) {
+        changes.push('full_name = ?');
+        values.push(check.text(body.full_name, 'Full name', { min: 2, max: 100 }));
+    }
+    if (body.phone !== undefined) {
+        changes.push('phone = ?');
+        values.push(check.phone(body.phone));
+    }
+
+    const profileChanges = [];
+    const profileValues = [];
+    if (req.user.role === 'student') {
+        if (body.university_id !== undefined) {
+            profileChanges.push('university_id = ?');
+            profileValues.push(check.integer(body.university_id, 'University'));
+        }
+        if (body.student_roll !== undefined) {
+            profileChanges.push('student_roll = ?');
+            profileValues.push(check.optionalText(body.student_roll, 'Student roll', { max: 30 }));
+        }
+        if (body.department !== undefined) {
+            profileChanges.push('department = ?');
+            profileValues.push(check.optionalText(body.department, 'Department', { max: 80 }));
+        }
+    } else if (req.user.role === 'manager' && body.address !== undefined) {
+        profileChanges.push('address = ?');
+        profileValues.push(check.optionalText(body.address, 'Address'));
+    }
+
+    if (changes.length === 0 && profileChanges.length === 0) {
+        throw new AppError(400, 'Nothing to change');
+    }
+
+    await withTransaction(async (connection) => {
+        if (changes.length > 0) {
+            await connection.query(`UPDATE users SET ${changes.join(', ')} WHERE user_id = ?`, [...values, userId]);
+        }
+        if (profileChanges.length > 0) {
+            const table = req.user.role === 'student' ? 'student_profiles' : 'manager_profiles';
+            const idColumn = req.user.role === 'student' ? 'student_id' : 'manager_id';
+            await connection.query(`UPDATE ${table} SET ${profileChanges.join(', ')} WHERE ${idColumn} = ?`, [...profileValues, userId]);
+        }
+    });
+
+    res.json(await loadMe(userId));
+}
+
+// PATCH /api/auth/password   { "current_password": "...", "new_password": "..." }
+async function changePassword(req, res) {
+    const body = req.body || {};
+    if (typeof body.current_password !== 'string' || body.current_password === '') {
+        throw new AppError(400, 'Current password is required');
+    }
+    const newPassword = check.password(body.new_password);
+
+    const rows = await query('SELECT password_hash FROM users WHERE user_id = ?', [req.user.id]);
+    if (!(await bcrypt.compare(body.current_password, rows[0].password_hash))) {
+        throw new AppError(401, 'Your current password is wrong');
+    }
+
+    await query('UPDATE users SET password_hash = ? WHERE user_id = ?', [await bcrypt.hash(newPassword, 10), req.user.id]);
+    res.json({ changed: true });
+}
+
+// The details of one user, ready to send. The role decides which extra parts are added.
+async function loadMe(userId) {
     const rows = await query(
         'SELECT user_id, full_name, email, phone, role, created_at FROM users WHERE user_id = ?',
-        [req.user.id]
+        [userId]
     );
     const user = rows[0];
     const answer = { ...publicUser(user), created_at: user.created_at };
@@ -144,7 +223,7 @@ async function me(req, res) {
         answer.mess = messes[0] || null; // null until the manager creates the mess
     }
 
-    res.json(answer);
+    return answer;
 }
 
-module.exports = { register, login, me };
+module.exports = { register, login, me, updateProfile, changePassword };
