@@ -54,4 +54,59 @@ async function closePool() {
     await pool.end();
 }
 
-module.exports = { startServer, request, loginAs, uniqueNumber, deleteTestUser, closePool, query, DEMO_PASSWORD };
+// Creates a new student or manager account through the API and returns { token, user }.
+// The caller must delete the user at the end (deleteTestUser).
+async function registerUser(base, role) {
+    const stamp = uniqueNumber() + Math.floor(Math.random() * 1000);
+    const digits = String(stamp).padStart(8, '0').slice(-8);
+    const body = {
+        role,
+        full_name: role === 'manager' ? 'Test Manager' : 'Test Student',
+        email: `test.${role}.${stamp}@example.com`,
+        phone: `013${role === 'manager' ? '5' : '4'}${digits.slice(0, 7)}`,
+        password: 'Secret123',
+    };
+    if (role === 'manager') {
+        body.nid_no = `19${digits}${digits.slice(0, 3)}`;
+    } else {
+        body.university_id = 1;
+        body.gender = 'male';
+    }
+    const result = await request(base, 'POST', '/auth/register', { body });
+    if (result.status !== 201) throw new Error('Could not register a test user: ' + JSON.stringify(result.body));
+    return result.body;
+}
+
+// Tests that add rows (posts, comments, notifications, a test mess...) must leave the demo data
+// as it was. takeSnapshot() remembers the last id of each table, restoreSnapshot() deletes
+// everything added after that, in an order the foreign keys allow.
+const TRACKED_TABLES = [
+    ['notifications', 'notification_id'],
+    ['post_comments', 'comment_id'],
+    ['vacancy_posts', 'post_id'],        // its post_seats rows are deleted with it (CASCADE)
+    ['seat_wanted_posts', 'wanted_id'],
+    ['seat_rent_log', 'log_id'],
+    ['seats', 'seat_id'],
+    ['rooms', 'room_id'],
+    ['messes', 'mess_id'],               // its facility and university rows are deleted with it (CASCADE)
+];
+
+async function takeSnapshot() {
+    const snapshot = {};
+    for (const [table, idColumn] of TRACKED_TABLES) {
+        const rows = await query(`SELECT COALESCE(MAX(${idColumn}), 0) AS last_id FROM ${table}`);
+        snapshot[table] = rows[0].last_id;
+    }
+    return snapshot;
+}
+
+async function restoreSnapshot(snapshot) {
+    for (const [table, idColumn] of TRACKED_TABLES) {
+        await query(`DELETE FROM ${table} WHERE ${idColumn} > ?`, [snapshot[table]]);
+    }
+}
+
+module.exports = {
+    startServer, request, loginAs, registerUser, uniqueNumber, deleteTestUser, closePool, query,
+    takeSnapshot, restoreSnapshot, DEMO_PASSWORD,
+};

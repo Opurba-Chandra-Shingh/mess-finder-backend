@@ -81,4 +81,41 @@ function idList(value, name) {
     return String(value).split(',').map((part) => integer(part.trim(), name));
 }
 
-module.exports = { text, optionalText, email, phone, password, oneOf, integer, optionalNumber, idList };
+// A number that must be sent, for example a rent.
+function number(value, name, { min = 0, max = 1e9 } = {}) {
+    const checked = optionalNumber(value, name, { min, max });
+    if (checked === undefined) throw new AppError(400, `${name} is required`);
+    return checked;
+}
+
+// Yes or no. Accepts true/false and 1/0. Returns 1 or 0 (what MySQL BOOLEAN stores).
+function flag(value, name, { fallback = 0 } = {}) {
+    if (value === undefined || value === null || value === '') return fallback;
+    if (value === true || value === 1 || value === '1' || value === 'true') return 1;
+    if (value === false || value === 0 || value === '0' || value === 'false') return 0;
+    throw new AppError(400, `${name} must be true or false`);
+}
+
+// A date like 2026-12-01. Returns the same text.
+function date(value, name) {
+    const checked = text(String(value ?? ''), name, { max: 10 });
+    const parsed = new Date(checked + 'T00:00:00Z');
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(checked) || Number.isNaN(parsed.getTime()) || parsed.toISOString().slice(0, 10) !== checked) {
+        throw new AppError(400, `${name} must be a date like 2026-12-01`);
+    }
+    return checked;
+}
+
+// A list of whole numbers sent as a JSON array, for example [1, 4, 5]. Duplicates are removed.
+function integerArray(value, name, { max = 100 } = {}) {
+    if (value === undefined || value === null) return [];
+    if (!Array.isArray(value) || value.length > max) {
+        throw new AppError(400, `${name} must be a list of up to ${max} numbers`);
+    }
+    return [...new Set(value.map((item) => integer(item, name)))];
+}
+
+module.exports = {
+    text, optionalText, email, phone, password, oneOf, integer, optionalNumber, number, idList,
+    flag, date, integerArray,
+};

@@ -6,6 +6,11 @@ const duplicateMessages = {
     uq_users_email: 'This email is already registered',
     uq_users_phone: 'This phone number is already registered',
     uq_manager_profiles_nid_no: 'This NID number is already registered',
+    uq_messes_manager: 'You already have a mess',
+    uq_room_no: 'This room number already exists in your mess',
+    uq_seat_label: 'This seat label already exists in the room',
+    uq_review: 'You have already reviewed this mess',
+    uq_conversation: 'This chat already exists',
 };
 
 // Errors that come from MySQL (the database rules we wrote) are turned into normal HTTP answers.

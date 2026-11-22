@@ -23,7 +23,7 @@ The website pages live in the separate `frontend` repository.
 |---|---|---|
 | 1 | Database schema (26 tables), demo data, basic queries | Done |
 | 2 | Advanced SQL: views, functions, procedures, triggers, events, indexes | Done |
-| 3 | Express API | In progress: setup, login and mess pages done |
+| 3 | Express API | In progress: login, messes, manager setup, newsfeed and Interested done |
 | 4 | Frontend | Planned |
 
 ## Run the API
@@ -96,3 +96,33 @@ A logged in user sends the token in the header `Authorization: Bearer <token>`.
 | `GET /messes/:id/reviews` | everybody | Reviews with "Current member" or "Ex-member" and the manager's reply. |
 
 A mess that the admin has not verified yet is visible only to its manager and the admin.
+
+### Newsfeed, comments and Interested
+
+| Method and address | Who | What it does |
+|---|---|---|
+| `GET /newsfeed` | everybody | Vacancy posts and seat wanted posts together, newest first. Filters: `type=vacancy` or `seat_wanted`, `area_id`, `mess_type`, `status=open`. Closed and removed posts are not shown. |
+| `POST /seat-wanted` | student | Make a "seat wanted" post (at most 5 open at the same time). |
+| `GET /seat-wanted/my` | student | His own posts. |
+| `PATCH /seat-wanted/:id/close` | student | Close his own post. |
+| `GET /posts/vacancy/:id/comments`, `GET /posts/wanted/:id/comments` | everybody | The comments of a post. |
+| `POST /posts/vacancy/:id/comments`, `POST /posts/wanted/:id/comments` | logged in | Write a comment (`{ "body": "..." }`). The owner of the post gets a notification. |
+| `DELETE /comments/:id` | owner or admin | Hides a comment (soft delete). |
+| `POST /interests/toggle` | student | The Interested button: `{ "mess_id": 1, "post_id": 3 }`. Press again to remove. |
+| `GET /interests/my` | student | The messes he marked, with the chat if there is one. |
+
+### Manager: mess, rooms, seats and posts
+
+All these need a manager login. A manager can reach only his own mess, rooms and seats.
+
+| Method and address | What it does |
+|---|---|
+| `POST /manager/mess`, `GET /manager/mess`, `PUT /manager/mess` | Create (it waits for the admin), read and change the mess with its facilities and nearby universities. |
+| `POST /manager/rooms`, `PATCH /manager/rooms/:id` | Add and change a room. |
+| `PATCH /manager/rooms/:id/deactivate`, `.../activate` | Switch a room off or on (not possible while members live in it). |
+| `POST /manager/rooms/:id/seats` | Add a seat to a room. |
+| `PATCH /manager/seats/:id/rent` | Change the rent of a seat (the old rent is logged, members keep their own rent). |
+| `PATCH /manager/seats/:id/deactivate`, `.../activate` | Switch a seat off or on (not possible while a member lives in it). |
+| `GET /manager/rooms-seats` | The Room-wise seats page: every room with its seats and who lives in them. |
+| `POST /manager/posts`, `GET /manager/posts`, `PATCH /manager/posts/:id/close` | Vacancy posts: `{ "title", "description", "available_from", "seat_ids": [19, 18] }`. |
+| `GET /manager/interests` | The students who are interested in his mess. |

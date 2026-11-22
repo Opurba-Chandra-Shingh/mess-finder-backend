@@ -8,7 +8,9 @@ const pool = mysql.createPool({
     user: env.db.user,
     password: env.db.password,
     database: env.db.database,
-    charset: 'utf8mb4',
+    // the same collation the database uses (see schema/00_create_database.sql), otherwise
+    // comparing a value we send with a text column or a view can fail with "Illegal mix of collations"
+    charset: 'UTF8MB4_0900_AI_CI',
     connectionLimit: 10,
     decimalNumbers: true, // DECIMAL columns (money) arrive as numbers, not text
     dateStrings: true,    // DATE and DATETIME columns arrive as text like "2026-11-22"
@@ -39,4 +41,16 @@ async function withTransaction(work) {
     }
 }
 
-module.exports = { pool, query, withTransaction };
+// Gives you one connection for several statements that must run in the same session,
+// for example CALL a_procedure(..., @result) followed by SELECT @result
+// (a @variable lives only as long as the connection).
+async function withConnection(work) {
+    const connection = await pool.getConnection();
+    try {
+        return await work(connection);
+    } finally {
+        connection.release();
+    }
+}
+
+module.exports = { pool, query, withTransaction, withConnection };

@@ -3,6 +3,7 @@
 const { query } = require('../config/db');
 const AppError = require('../utils/app-error');
 const check = require('../utils/validate');
+const { groupRoomsAndSeats } = require('../utils/room-seats');
 
 // Ways to sort the list. The website sends a word, we pick the SQL from this list,
 // so nothing the user types ever becomes part of the SQL text.
@@ -313,50 +314,8 @@ async function seats(req, res) {
         [messId]
     );
 
-    const rooms = [];
-    const summary = { total: 0, free: 0, booked: 0, inactive: 0 };
-
-    for (const row of rows) {
-        // the public does not see switched off rooms and seats
-        if (!canSeePeople && (!row.room_is_active || row.seat_status === 'inactive')) continue;
-
-        let room = rooms.find((r) => r.room_id === row.room_id);
-        if (!room) {
-            room = {
-                room_id: row.room_id,
-                room_no: row.room_no,
-                floor_no: row.floor_no,
-                has_attached_bath: row.has_attached_bath,
-                has_balcony: row.has_balcony,
-                is_active: row.room_is_active,
-                seats: [],
-            };
-            rooms.push(room);
-        }
-
-        const seat = {
-            seat_id: row.seat_id,
-            seat_label: row.seat_label,
-            monthly_rent: row.monthly_rent,
-            status: row.seat_status,
-        };
-        if (canSeePeople && row.member_id) {
-            seat.member = {
-                member_id: row.member_id,
-                full_name: row.member_name,
-                phone: row.member_phone,
-                member_since: row.member_since,
-            };
-        }
-        room.seats.push(seat);
-
-        summary.total += 1;
-        if (row.seat_status === 'available') summary.free += 1;
-        else if (row.seat_status === 'booked') summary.booked += 1;
-        else summary.inactive += 1;
-    }
-
-    res.json({ summary, rooms });
+    // the public does not see switched off rooms and seats, nor who lives where
+    res.json(groupRoomsAndSeats(rows, { showPeople: canSeePeople, showInactive: canSeePeople }));
 }
 
 // GET /api/messes/:id/reviews?page=1&limit=10

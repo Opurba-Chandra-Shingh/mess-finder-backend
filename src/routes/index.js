@@ -5,6 +5,9 @@ const { query } = require('../config/db');
 router.use('/auth', require('./auth.routes'));
 router.use('/messes', require('./mess.routes'));
 router.use('/reference', require('./reference.routes'));
+router.use('/manager', require('./manager.routes'));
+router.use('/interests', require('./interest.routes'));
+router.use('/', require('./newsfeed.routes'));   // /newsfeed, /seat-wanted, /posts/.../comments, /comments/:id
 
 // GET /api/health: is the server up and can it reach MySQL?
 router.get('/health', async (req, res) => {
