@@ -1,0 +1,150 @@
+// Register, login and "who am I".
+const bcrypt = require('bcryptjs');
+const { query, withTransaction } = require('../config/db');
+const { signToken } = require('../middleware/auth');
+const AppError = require('../utils/app-error');
+const check = require('../utils/validate');
+
+// When the email does not exist we still compare against this hash,
+// so a wrong email and a wrong password take the same time and give the same answer.
+const DUMMY_HASH = bcrypt.hashSync('not-a-real-password', 10);
+
+// What the website may know about a user (never the password hash).
+function publicUser(user) {
+    return {
+        user_id: user.user_id,
+        full_name: user.full_name,
+        email: user.email,
+        phone: user.phone,
+        role: user.role,
+    };
+}
+
+// POST /api/auth/register
+async function register(req, res) {
+    const body = req.body || {};
+
+    const role = check.oneOf(body.role, 'Role', ['student', 'manager']);
+    const fullName = check.text(body.full_name, 'Full name', { min: 2, max: 100 });
+    const email = check.email(body.email);
+    const phone = check.phone(body.phone);
+    const passwordText = check.password(body.password);
+
+    // the extra details of each role
+    let profile;
+    if (role === 'student') {
+        profile = {
+            universityId: check.integer(body.university_id, 'University'),
+            gender: check.oneOf(body.gender, 'Gender', ['male', 'female']),
+            roll: check.optionalText(body.student_roll, 'Student roll', { max: 30 }),
+            department: check.optionalText(body.department, 'Department', { max: 80 }),
+        };
+    } else {
+        const nid = check.text(body.nid_no, 'NID number', { max: 20 });
+        if (!/^\d{10,17}$/.test(nid)) {
+            throw new AppError(400, 'NID number must be 10 to 17 digits');
+        }
+        profile = { nid, address: check.optionalText(body.address, 'Address') };
+    }
+
+    const passwordHash = await bcrypt.hash(passwordText, 10);
+
+    // the user and the profile are saved together, or not at all
+    const userId = await withTransaction(async (connection) => {
+        const [result] = await connection.query(
+            'INSERT INTO users (full_name, email, phone, password_hash, role) VALUES (?, ?, ?, ?, ?)',
+            [fullName, email, phone, passwordHash, role]
+        );
+
+        if (role === 'student') {
+            await connection.query(
+                'INSERT INTO student_profiles (student_id, university_id, student_roll, department, gender) VALUES (?, ?, ?, ?, ?)',
+                [result.insertId, profile.universityId, profile.roll, profile.department, profile.gender]
+            );
+        } else {
+            await connection.query(
+                'INSERT INTO manager_profiles (manager_id, nid_no, address) VALUES (?, ?, ?)',
+                [result.insertId, profile.nid, profile.address]
+            );
+        }
+        return result.insertId;
+    });
+
+    const user = { user_id: userId, full_name: fullName, email, phone, role };
+    res.status(201).json({ token: signToken(user), user: publicUser(user) });
+}
+
+// POST /api/auth/login
+async function login(req, res) {
+    const body = req.body || {};
+    const email = check.email(body.email);
+    if (typeof body.password !== 'string' || body.password === '') {
+        throw new AppError(400, 'Password is required');
+    }
+
+    const rows = await query(
+        'SELECT user_id, full_name, email, phone, role, password_hash, is_active FROM users WHERE email = ?',
+        [email]
+    );
+    const user = rows[0];
+
+    const passwordOk = await bcrypt.compare(body.password, user ? user.password_hash : DUMMY_HASH);
+    if (!user || !passwordOk) {
+        throw new AppError(401, 'Wrong email or password');
+    }
+    if (!user.is_active) {
+        throw new AppError(403, 'Your account is blocked. Please contact the admin');
+    }
+
+    res.json({ token: signToken(user), user: publicUser(user) });
+}
+
+// GET /api/auth/me  (needs a token)
+async function me(req, res) {
+    const rows = await query(
+        'SELECT user_id, full_name, email, phone, role, created_at FROM users WHERE user_id = ?',
+        [req.user.id]
+    );
+    const user = rows[0];
+    const answer = { ...publicUser(user), created_at: user.created_at };
+
+    if (user.role === 'student') {
+        const profiles = await query(
+            `SELECT sp.university_id, un.name AS university_name, un.short_name AS university_short_name,
+                    sp.student_roll, sp.department, sp.gender
+               FROM student_profiles AS sp
+               JOIN universities AS un ON un.university_id = sp.university_id
+              WHERE sp.student_id = ?`,
+            [user.user_id]
+        );
+        // the mess the student lives in right now, if the manager linked the account
+        const membership = await query(
+            `SELECT m.member_id, me.mess_id, me.mess_name, r.room_no, s.seat_label, m.monthly_rent, m.join_date
+               FROM mess_members AS m
+               JOIN seats AS s   ON s.seat_id  = m.seat_id
+               JOIN rooms AS r   ON r.room_id  = s.room_id
+               JOIN messes AS me ON me.mess_id = r.mess_id
+              WHERE m.student_id = ? AND m.status = 'active'`,
+            [user.user_id]
+        );
+        answer.profile = profiles[0];
+        answer.membership = membership[0] || null;
+    }
+
+    if (user.role === 'manager') {
+        const profiles = await query(
+            'SELECT nid_no, address, is_verified FROM manager_profiles WHERE manager_id = ?',
+            [user.user_id]
+        );
+        const messes = await query(
+            'SELECT mess_id, mess_name, status FROM messes WHERE manager_id = ?',
+            [user.user_id]
+        );
+        answer.profile = profiles[0];
+        answer.mess = messes[0] || null; // null until the manager creates the mess
+    }
+
+    res.json(answer);
+}
+
+module.exports = { register, login, me };
