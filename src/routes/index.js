@@ -6,7 +6,9 @@ router.use('/auth', require('./auth.routes'));
 router.use('/messes', require('./mess.routes'));
 router.use('/reference', require('./reference.routes'));
 router.use('/manager', require('./manager.routes'));
+router.use('/admin', require('./admin.routes'));
 router.use('/interests', require('./interest.routes'));
+router.use('/conversations', require('./chat.routes'));
 router.use('/', require('./newsfeed.routes'));   // /newsfeed, /seat-wanted, /posts/.../comments, /comments/:id
 router.use('/', require('./student.routes'));    // /me/..., /reviews, /visits
 router.use('/', require('./account.routes'));    // /notifications, /complaints

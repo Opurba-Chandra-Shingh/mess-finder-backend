@@ -1,18 +1,23 @@
 // Shared helpers for the tests. The tests talk to the real API and the real demo database,
 // so load the demo data first (see database/README.md) and fill in your .env file.
+const http = require('http');
 const createApp = require('../src/app');
+const { initChat } = require('../src/socket/chat');
 const { pool, query } = require('../src/config/db');
 
 const DEMO_PASSWORD = 'Demo@1234';
 
-// Starts the API on a free port and returns its address and a close function.
+// Starts the API and the real time chat on a free port.
+// base is the address of the API, url is the address for Socket.io.
 async function startServer() {
-    const server = await new Promise((resolve) => {
-        const running = createApp().listen(0, () => resolve(running));
-    });
+    const server = http.createServer(createApp());
+    const io = initChat(server);
+    await new Promise((resolve) => server.listen(0, resolve));
+    const url = `http://127.0.0.1:${server.address().port}`;
     return {
-        base: `http://127.0.0.1:${server.address().port}/api`,
-        close: () => new Promise((resolve) => server.close(resolve)),
+        base: `${url}/api`,
+        url,
+        close: () => new Promise((resolve) => io.close(() => resolve())),   // also closes the http server
     };
 }
 
@@ -81,6 +86,8 @@ async function registerUser(base, role) {
 // as it was. takeSnapshot() remembers the last id of each table, restoreSnapshot() deletes
 // everything added after that, in an order the foreign keys allow.
 const TRACKED_TABLES = [
+    ['messages', 'message_id'],
+    ['conversations', 'conversation_id'],
     ['notifications', 'notification_id'],
     ['post_comments', 'comment_id'],
     ['vacancy_posts', 'post_id'],        // its post_seats rows are deleted with it (CASCADE)

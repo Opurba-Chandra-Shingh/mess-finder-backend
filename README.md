@@ -13,7 +13,7 @@ The website pages live in the separate `frontend` repository.
 |---|---|
 | Database | MySQL 8 (plain SQL, no ORM) |
 | API | Node.js and Express.js 5 |
-| Chat | Socket.io (added in a later step) |
+| Chat | Socket.io 4 (real time messages) |
 | Login | bcryptjs (passwords) and JSON Web Tokens |
 | Database driver | mysql2 |
 
@@ -23,7 +23,7 @@ The website pages live in the separate `frontend` repository.
 |---|---|---|
 | 1 | Database schema (26 tables), demo data, basic queries | Done |
 | 2 | Advanced SQL: views, functions, procedures, triggers, events, indexes | Done |
-| 3 | Express API | In progress: everything except chat and the admin part is done |
+| 3 | Express API, chat and admin part | Done (213 automated tests) |
 | 4 | Frontend | Planned |
 
 ## Run the API
@@ -62,6 +62,7 @@ backend/
 |   |-- config/             env.js (settings) and db.js (MySQL connection pool)
 |   |-- middleware/         auth.js (login check, roles) and error-handler.js
 |   |-- routes/             which address goes to which controller
+|   |-- socket/             chat.js, the real time chat (Socket.io)
 |   |-- controllers/        the code of each endpoint (the SQL lives here)
 |   `-- utils/              input checks and the AppError class
 |-- tests/                  automated tests of the API
@@ -155,3 +156,51 @@ The Members page. The work is done by the procedures `sp_add_member`, `sp_mark_m
 | `POST /complaints`, `GET /complaints/my` | student, manager | Complain about a mess or a person, see own complaints. |
 | `GET /notifications`, `PATCH /notifications/:id/read`, `PATCH /notifications/read-all` | everybody logged in | Notifications with `unread_count` for the bell. |
 | `PATCH /auth/me`, `PATCH /auth/password` | everybody logged in | Change name, phone, profile details and password. |
+
+### Chat
+
+Chat is between a student and the manager of one mess. Only these two people can read it.
+The history and the "open a chat" step use normal requests. The live messages use Socket.io (see below).
+All these need a student or manager login.
+
+| Method and address | What it does |
+|---|---|
+| `POST /conversations` | Open a chat, or find the one that exists. A student sends `{ "mess_id": 4 }`, a manager sends `{ "student_id": 8 }`. Done by the procedure `sp_get_or_create_conversation`. |
+| `GET /conversations` | The inbox: title, last message, `unread_count`, newest chat first. |
+| `GET /conversations/unread-count` | One number for the badge of the menu. |
+| `GET /conversations/:id/messages` | Messages, oldest first, with the header of the chat and the contact numbers. `?limit=30` and `?before=<message_id>` load older messages page by page (`has_more` tells if there are more). |
+| `POST /conversations/:id/messages` | Send a message with a normal request (`{ "body": "..." }`, 1 to 1000 characters). |
+| `PATCH /conversations/:id/read` | Mark the messages of the other person as read. |
+
+#### Real time part (Socket.io)
+
+Connect to the same address as the API and send the token: `io(url, { auth: { token } })`.
+A student or manager who is blocked, or has a wrong token, gets the error `Please log in`.
+Every user joins a private room `user:<id>`, so all his open tabs get the same messages.
+
+| Event | Direction | Data |
+|---|---|---|
+| `send_message` | browser to server | `{ conversation_id, body }`. The server answers with an acknowledgement: `{ ok: true, message }` or `{ ok: false, error }`. At most 20 messages in 10 seconds per connection. |
+| `new_message` | server to both people | The saved message (`message_id`, `conversation_id`, `sender_id`, `sender_name`, `body`, `sent_at`, `is_read`). |
+| `mark_read` | browser to server | `{ conversation_id }`. Answer: `{ ok: true, marked }`. |
+| `messages_read` | server to the other person | `{ conversation_id, reader_id }`, so he can show "Seen". |
+
+A message that arrives by Socket.io is saved by the same code as one sent with `POST`, so the inbox order and the
+notification for the receiver (a trigger tells him once until he reads) are the same.
+
+### Admin
+
+All these need the admin login. The admin never sees passwords. Nothing is deleted: users are blocked, posts are hidden.
+
+| Method and address | What it does |
+|---|---|
+| `GET /admin/dashboard` | Cards (users, messes, open complaints, waiting verifications) and the newest waiting managers and messes. |
+| `GET /admin/reports` | Reports for the charts: messes and free seats per area, top 5 rated messes (`RANK()`), new members for the last 12 months (recursive CTE), money numbers of the whole system. |
+| `GET /admin/pending` | Managers and messes that wait for approval. |
+| `PATCH /admin/managers/:id/verify` | Verify a manager (he gets a notification). |
+| `PATCH /admin/messes/:id/verify`, `.../suspend` | Show a mess to the public, or hide it. The manager must be verified first. A trigger notifies the manager. |
+| `GET /admin/users` | Users with filters `role`, `status=active or blocked`, `q`, and pages. |
+| `PATCH /admin/users/:id/block`, `.../unblock` | Block or unblock a user. A blocked user is logged out at once (the token is checked against the database on every request). An admin cannot be blocked. |
+| `GET /admin/complaints`, `PATCH /admin/complaints/:id` | Unfinished complaints first. Change `status` (open, in_review, resolved, dismissed) and write `admin_note`. The person who complained gets a notification. |
+| `GET /admin/posts?type=vacancy or wanted`, `PATCH /admin/posts/:type/:id/remove` | Look at all posts and hide one that breaks the rules. |
+| `GET /admin/comments` | The newest comments. The admin removes one with `DELETE /comments/:id`. |

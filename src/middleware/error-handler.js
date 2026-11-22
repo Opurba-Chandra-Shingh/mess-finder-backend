@@ -35,14 +35,19 @@ function fromMysqlError(error) {
     }
 }
 
+// Turns any error into an AppError with a status and a readable message, or null for a real bug.
+function toAppError(error) {
+    if (error instanceof AppError) return error;
+    const fromDatabase = fromMysqlError(error);
+    if (fromDatabase) return fromDatabase;
+    // a body that is not valid JSON
+    if (error.type === 'entity.parse.failed') return new AppError(400, 'The request body is not valid JSON');
+    return null;
+}
+
 // eslint-disable-next-line no-unused-vars
 function errorHandler(error, req, res, next) {
-    let appError = error instanceof AppError ? error : fromMysqlError(error);
-
-    // a body that is not valid JSON
-    if (!appError && error.type === 'entity.parse.failed') {
-        appError = new AppError(400, 'The request body is not valid JSON');
-    }
+    const appError = toAppError(error);
 
     if (!appError) {
         console.error(error); // an unexpected bug: keep the details in the log, not in the answer
@@ -57,4 +62,4 @@ function notFound(req, res) {
     res.status(404).json({ error: 'Not found' });
 }
 
-module.exports = { errorHandler, notFound };
+module.exports = { errorHandler, notFound, toAppError };
