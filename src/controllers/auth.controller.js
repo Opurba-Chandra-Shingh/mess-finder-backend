@@ -20,6 +20,41 @@ function publicUser(user) {
     };
 }
 
+// "Green University of Bangladesh" -> "GUB" (the short name of a university that a student adds)
+function shortNameOf(name) {
+    const small = ['of', 'and', 'the', 'for', 'in'];
+    const letters = name.split(/\s+/)
+        .filter((word) => word !== '' && !small.includes(word.toLowerCase()))
+        .map((word) => word[0].toUpperCase())
+        .join('');
+    return (letters || name).slice(0, 20);
+}
+
+// A student whose university is not in the list can add it when he registers.
+// If a university with this name exists it is used (so nobody adds the same one twice).
+// The place of a new university is not known, so it gets the average place of the other universities of the
+// same area (the Nearby search needs a place). The admin can see it in the list like any other.
+async function findOrCreateUniversity(connection, input) {
+    const [same] = await connection.query('SELECT university_id FROM universities WHERE name = ?', [input.name]);
+    if (same.length > 0) return same[0].university_id;
+
+    const [area] = await connection.query('SELECT area_id FROM areas WHERE area_id = ?', [input.areaId]);
+    if (area.length === 0) throw new AppError(400, 'Area not found');
+
+    let [places] = await connection.query('SELECT AVG(latitude) AS lat, AVG(longitude) AS lng FROM universities WHERE area_id = ?', [input.areaId]);
+    if (places[0].lat === null) {
+        [places] = await connection.query('SELECT AVG(latitude) AS lat, AVG(longitude) AS lng FROM universities');
+    }
+    const latitude = places[0].lat === null ? 23.8103 : Number(places[0].lat);       // the middle of Dhaka, if nothing else is known
+    const longitude = places[0].lng === null ? 90.4125 : Number(places[0].lng);
+
+    const [result] = await connection.query(
+        'INSERT INTO universities (name, short_name, area_id, latitude, longitude) VALUES (?, ?, ?, ?, ?)',
+        [input.name, shortNameOf(input.name), input.areaId, latitude, longitude]
+    );
+    return result.insertId;
+}
+
 // POST /api/auth/register
 async function register(req, res) {
     const body = req.body || {};
@@ -33,8 +68,22 @@ async function register(req, res) {
     // the extra details of each role
     let profile;
     if (role === 'student') {
+        // the university is chosen from the list (university_id) or added by the student (new_university)
+        let newUniversity = null;
+        let universityId = null;
+        if (body.university_id !== undefined && body.university_id !== null && body.university_id !== '') {
+            universityId = check.integer(body.university_id, 'University');
+        } else if (body.new_university && typeof body.new_university === 'object') {
+            newUniversity = {
+                name: check.text(body.new_university.name, 'University name', { min: 3, max: 150 }),
+                areaId: check.integer(body.new_university.area_id, 'Area of the university'),
+            };
+        } else {
+            throw new AppError(400, 'University is required');
+        }
         profile = {
-            universityId: check.integer(body.university_id, 'University'),
+            universityId,
+            newUniversity,
             gender: check.oneOf(body.gender, 'Gender', ['male', 'female']),
             roll: check.optionalText(body.student_roll, 'Student roll', { max: 30 }),
             department: check.optionalText(body.department, 'Department', { max: 80 }),
@@ -57,9 +106,12 @@ async function register(req, res) {
         );
 
         if (role === 'student') {
+            const universityId = profile.newUniversity
+                ? await findOrCreateUniversity(connection, profile.newUniversity)
+                : profile.universityId;
             await connection.query(
                 'INSERT INTO student_profiles (student_id, university_id, student_roll, department, gender) VALUES (?, ?, ?, ?, ?)',
-                [result.insertId, profile.universityId, profile.roll, profile.department, profile.gender]
+                [result.insertId, universityId, profile.roll, profile.department, profile.gender]
             );
         } else {
             await connection.query(

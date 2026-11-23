@@ -119,6 +119,43 @@ describe('register', () => {
         assert.equal(rows.length, 0);
     });
 
+    it('a student whose university is not in the list can add it when he registers', async () => {
+        const name = `Test University ${stamp}`;
+        const first = await request(api.base, 'POST', '/auth/register', {
+            body: { ...studentBody, email: `newuni.a.${stamp}@example.com`, phone: '01391111111', university_id: undefined, new_university: { name, area_id: 1 } },
+        });
+        assert.equal(first.status, 201);
+        createdUserIds.push(first.body.user.user_id);
+
+        const saved = await query('SELECT university_id, short_name, area_id, latitude FROM universities WHERE name = ?', [name]);
+        assert.equal(saved.length, 1);
+        assert.equal(saved[0].area_id, 1);
+        assert.ok(saved[0].short_name.length > 0 && saved[0].latitude !== null);
+
+        // a second student with the same name uses the same university, no duplicate is made
+        const second = await request(api.base, 'POST', '/auth/register', {
+            body: { ...studentBody, email: `newuni.b.${stamp}@example.com`, phone: '01392222222', university_id: undefined, new_university: { name: name.toUpperCase(), area_id: 2 } },
+        });
+        assert.equal(second.status, 201);
+        createdUserIds.push(second.body.user.user_id);
+        assert.equal((await query('SELECT COUNT(*) AS n FROM universities WHERE name = ?', [name]))[0].n, 1);
+        const profile = await query('SELECT university_id FROM student_profiles WHERE student_id = ?', [second.body.user.user_id]);
+        assert.equal(profile[0].university_id, saved[0].university_id);
+
+        // wrong input is refused and nothing is left behind
+        const base = { ...studentBody, university_id: undefined };
+        const shortName = await request(api.base, 'POST', '/auth/register', { body: { ...base, email: `newuni.c.${stamp}@example.com`, phone: '01393333333', new_university: { name: 'ab', area_id: 1 } } });
+        assert.equal(shortName.status, 400);
+        const badArea = await request(api.base, 'POST', '/auth/register', { body: { ...base, email: `newuni.d.${stamp}@example.com`, phone: '01394444444', new_university: { name: `Other University ${stamp}`, area_id: 9999 } } });
+        assert.equal(badArea.status, 400);
+        assert.equal((await query('SELECT COUNT(*) AS n FROM universities WHERE name = ?', [`Other University ${stamp}`]))[0].n, 0);
+        assert.equal((await query('SELECT COUNT(*) AS n FROM users WHERE email = ?', [`newuni.d.${stamp}@example.com`]))[0].n, 0);
+
+        await query('DELETE FROM student_profiles WHERE university_id = ?', [saved[0].university_id]);
+        for (const id of createdUserIds.splice(-2)) await deleteTestUser(id);
+        await query('DELETE FROM universities WHERE university_id = ?', [saved[0].university_id]);
+    });
+
     it('a manager can register with an NID number', async () => {
         const body = {
             role: 'manager',
