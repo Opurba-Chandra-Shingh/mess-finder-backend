@@ -83,7 +83,7 @@ A logged in user sends the token in the header `Authorization: Bearer <token>`.
 | `POST /auth/login` | everybody | Log in, returns a token. |
 | `GET /auth/me` | logged in | Own details. A student also gets the mess he lives in, a manager gets his mess. |
 | `GET /health` | everybody | Is the server up and connected to MySQL? |
-| `GET /reference/areas`, `/universities`, `/facilities` | everybody | Lists for forms and filters. |
+| `GET /reference/areas`, `/universities`, `/facilities` | everybody | Lists for forms and filters. Areas and universities can be searched, because there can be many: `?q=word`, `?limit=8`, `?id=3`. |
 
 ### Messes
 
@@ -125,7 +125,7 @@ All these need a manager login. A manager can reach only his own mess, rooms and
 | `PATCH /manager/seats/:id/rent` | Change the rent of a seat (the old rent is logged, members keep their own rent). |
 | `PATCH /manager/seats/:id/deactivate`, `.../activate` | Switch a seat off or on (not possible while a member lives in it). |
 | `GET /manager/rooms-seats` | The Room-wise seats page: every room with its seats and who lives in them. |
-| `POST /manager/posts`, `GET /manager/posts`, `PATCH /manager/posts/:id/close` | Vacancy posts: `{ "title", "description", "available_from", "seat_ids": [19, 18] }`. |
+| `POST /manager/posts`, `GET /manager/posts`, `PATCH /manager/posts/:id/close` | Vacancy posts: `{ "title", "description", "available_from", "seat_ids": [19, 18] }`. The list is in pages (`?page=1&limit=10`). |
 | `GET /manager/interests` | The students who are interested in his mess. |
 
 ### Manager: members, rent and payments
@@ -149,7 +149,7 @@ The Members page. The work is done by the procedures `sp_add_member`, `sp_mark_m
 | Method and address | Who | What it does |
 |---|---|---|
 | `POST /visits`, `GET /visits/my`, `PATCH /visits/:id/cancel` | student | Ask for a visit, see the requests, cancel one. |
-| `GET /manager/visits`, `PATCH /manager/visits/:id/confirm`, `.../reject`, `.../complete` | manager | Answer the visit requests. |
+| `GET /manager/visits`, `PATCH /manager/visits/:id/confirm`, `.../reject`, `.../complete` | manager | Answer the visit requests. The list is in pages (`?status=&page=1&limit=20`) and has `counts` with the number of requests of every status. |
 | `POST /reviews` | student | Review a mess he lived in (one per mess). |
 | `GET /manager/reviews`, `PATCH /manager/reviews/:id/reply` | manager | Read the reviews, reply once. |
 | `GET /me/membership`, `GET /me/dues`, `GET /me/payments` | student | The My mess page: his mess, his rent month by month, his payments. |
@@ -196,7 +196,7 @@ All these need the admin login. The admin never sees passwords. Nothing is delet
 |---|---|
 | `GET /admin/dashboard` | Cards (users, messes, open complaints, waiting verifications) and the newest waiting managers and messes. |
 | `GET /admin/reports` | Reports for the charts: messes and free seats per area, top 5 rated messes (`RANK()`), new members for the last 12 months (recursive CTE), money numbers of the whole system. |
-| `GET /admin/pending` | Managers and messes that wait for approval. |
+| `GET /admin/pending` | Managers and messes that wait for approval. Each of the two lists has its own pages (`?managers_page=1&messes_page=1&limit=12`). |
 | `PATCH /admin/managers/:id/verify` | Verify a manager (he gets a notification). |
 | `PATCH /admin/messes/:id/verify`, `.../suspend` | Show a mess to the public, or hide it. The manager must be verified first. A trigger notifies the manager. |
 | `GET /admin/users` | Users with filters `role`, `status=active or blocked`, `q`, and pages. |

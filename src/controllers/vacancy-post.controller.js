@@ -42,16 +42,27 @@ async function createPost(req, res) {
     res.status(201).json(await loadPost(mess.mess_id, postId));
 }
 
-// GET /api/manager/posts
+// GET /api/manager/posts?page=1   (newest first, 10 on a page)
 async function myPosts(req, res) {
     const mess = await getOwnMess(req.user.id);
-    const rows = await query(
-        `SELECT * FROM v_newsfeed
-          WHERE post_type = 'vacancy' AND mess_id = ? AND status <> 'removed'
-          ORDER BY created_at DESC, post_id DESC`,
-        [mess.mess_id]
-    );
-    res.json(await addDetails(rows, null));
+    const page = check.integer(req.query.page, 'Page', { fallback: 1, max: 100000 });
+    const limit = check.integer(req.query.limit, 'Limit', { fallback: 10, max: 50 });
+
+    const [totalRows, rows] = await Promise.all([
+        query(
+            "SELECT COUNT(*) AS total FROM vacancy_posts WHERE mess_id = ? AND status <> 'removed'",
+            [mess.mess_id]
+        ),
+        query(
+            `SELECT * FROM v_newsfeed
+              WHERE post_type = 'vacancy' AND mess_id = ? AND status <> 'removed'
+              ORDER BY created_at DESC, post_id DESC
+              LIMIT ? OFFSET ?`,
+            [mess.mess_id, limit, (page - 1) * limit]
+        ),
+    ]);
+    const total = totalRows[0].total;
+    res.json({ data: await addDetails(rows, null), page, limit, total, total_pages: Math.ceil(total / limit) });
 }
 
 // PATCH /api/manager/posts/:id/close

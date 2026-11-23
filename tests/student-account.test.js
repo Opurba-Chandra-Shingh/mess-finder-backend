@@ -183,16 +183,19 @@ describe('visit requests', () => {
 
     it('the manager sees the request with the student', async () => {
         const list = await request(api.base, 'GET', '/manager/visits?status=pending', { token: jahid });
-        const entry = list.body.find((v) => v.visit_id === visitId);
+        const entry = list.body.data.find((v) => v.visit_id === visitId);
         assert.equal(entry.full_name, 'Rafsan Jani');
         assert.equal(entry.university, 'DU');
         assert.equal(entry.student_note, 'With a friend');
         // pending requests come first
         const all = await request(api.base, 'GET', '/manager/visits', { token: jahid });
-        assert.equal(all.body[0].status, 'pending');
+        assert.equal(all.body.data[0].status, 'pending');
+        assert.ok(all.body.counts.pending >= 1);
+        assert.equal(all.body.counts.all, all.body.total);
+        assert.equal(all.body.page, 1);
         assert.equal((await request(api.base, 'GET', '/manager/visits?status=maybe', { token: jahid })).status, 400);
         // another manager does not see it
-        assert.ok(!(await request(api.base, 'GET', '/manager/visits', { token: abdur })).body.some((v) => v.visit_id === visitId));
+        assert.ok(!(await request(api.base, 'GET', '/manager/visits', { token: abdur })).body.data.some((v) => v.visit_id === visitId));
     });
 
     it('confirms, completes, and the rules about the order', async () => {

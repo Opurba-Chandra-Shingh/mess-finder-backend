@@ -217,8 +217,10 @@ describe('vacancy posts of a manager', () => {
         const feed = await request(api.base, 'GET', '/newsfeed?type=vacancy');
         assert.equal(feed.body.data[0].post_id, postId);     // the newest post is first
         const mine = await request(api.base, 'GET', '/manager/posts', { token });
-        assert.ok(mine.body.some((p) => p.post_id === postId));
-        assert.ok(mine.body.every((p) => p.mess_id === 2));   // only posts of his own mess
+        assert.ok(mine.body.data.some((p) => p.post_id === postId));
+        assert.ok(mine.body.data.every((p) => p.mess_id === 2));
+        assert.equal(mine.body.page, 1);
+        assert.ok(mine.body.total >= 1);   // only posts of his own mess
     });
 
     it('closes the post, and a closed post leaves the newsfeed', async () => {

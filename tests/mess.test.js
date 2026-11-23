@@ -10,6 +10,26 @@ describe('reference lists', () => {
     before(async () => { api = await startServer(); });
     after(async () => { await api.close(); });
 
+    it('areas and universities can be searched, limited and asked by id', async () => {
+        const all = await request(api.base, 'GET', '/reference/universities');
+        const first = all.body[0];
+
+        const limited = await request(api.base, 'GET', '/reference/universities?limit=2');
+        assert.equal(limited.body.length, 2);
+
+        const byId = await request(api.base, 'GET', `/reference/universities?id=${first.university_id}`);
+        assert.deepEqual(byId.body.map((u) => u.university_id), [first.university_id]);
+
+        const found = await request(api.base, 'GET', `/reference/universities?q=${encodeURIComponent(first.short_name)}`);
+        assert.ok(found.body.some((u) => u.university_id === first.university_id));
+        assert.deepEqual((await request(api.base, 'GET', '/reference/universities?q=zzzzzz')).body, []);
+
+        const area = await request(api.base, 'GET', '/reference/areas?q=pur&limit=3');
+        assert.ok(area.body.length <= 3 && area.body.every((a) => a.area_name.toLowerCase().includes('pur')));
+        assert.equal((await request(api.base, 'GET', '/reference/areas?limit=500')).status, 400);
+        assert.equal((await request(api.base, 'GET', '/reference/areas?id=abc')).status, 400);
+    });
+
     it('areas, universities and facilities', async () => {
         const areas = await request(api.base, 'GET', '/reference/areas');
         const universities = await request(api.base, 'GET', '/reference/universities');

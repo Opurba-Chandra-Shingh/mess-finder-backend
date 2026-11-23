@@ -109,11 +109,13 @@ describe('verification of managers and messes', () => {
     it('lists what waits for the admin', async () => {
         const result = await request(api.base, 'GET', '/admin/pending', { token: admin });
         assert.equal(result.status, 200);
-        assert.deepEqual(result.body.managers.map((m) => m.user_id), [7]);
-        assert.equal(result.body.managers[0].mess_name, 'Badda Student Home');
-        assert.deepEqual(result.body.messes.map((m) => m.mess_id), [6]);
-        assert.equal(result.body.messes[0].manager_verified, 0);
-        assert.ok(result.body.messes[0].seat_count > 0);
+        assert.deepEqual(result.body.managers.data.map((m) => m.user_id), [7]);
+        assert.equal(result.body.managers.data[0].mess_name, 'Badda Student Home');
+        assert.deepEqual(result.body.messes.data.map((m) => m.mess_id), [6]);
+        assert.equal(result.body.messes.data[0].manager_verified, 0);
+        assert.ok(result.body.messes.data[0].seat_count > 0);
+        assert.equal(result.body.managers.total, 1);
+        assert.equal(result.body.messes.total_pages, 1);
     });
 
     it('a mess cannot be verified before its manager', async () => {
@@ -139,8 +141,8 @@ describe('verification of managers and messes', () => {
 
         assert.equal((await request(api.base, 'PATCH', '/admin/messes/6/verify', { token: admin })).status, 400);     // twice
         const pending = await request(api.base, 'GET', '/admin/pending', { token: admin });
-        assert.equal(pending.body.messes.length, 0);
-        assert.equal(pending.body.managers.length, 0);
+        assert.equal(pending.body.messes.total, 0);
+        assert.equal(pending.body.managers.total, 0);
 
         // the public can see the mess now
         const publicList = await request(api.base, 'GET', '/messes/6');

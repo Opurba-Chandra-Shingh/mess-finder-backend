@@ -3,10 +3,16 @@ const { query } = require('../config/db');
 const AppError = require('../utils/app-error');
 const check = require('../utils/validate');
 
-// GET /api/admin/pending
-// The managers and the messes that wait for the admin.
+// GET /api/admin/pending?managers_page=1&messes_page=1&limit=12
+// The managers and the messes that wait for the admin. Each of the two lists has its own pages.
 async function pending(req, res) {
-    const [managers, messes] = await Promise.all([
+    const limit = check.integer(req.query.limit, 'Limit', { fallback: 12, max: 50 });
+    const managersPage = check.integer(req.query.managers_page, 'Page', { fallback: 1, max: 100000 });
+    const messesPage = check.integer(req.query.messes_page, 'Page', { fallback: 1, max: 100000 });
+
+    const [managerTotal, messTotal, managers, messes] = await Promise.all([
+        query('SELECT COUNT(*) AS total FROM manager_profiles AS mp JOIN users AS u ON u.user_id = mp.manager_id WHERE mp.is_verified = 0 AND u.is_active = 1'),
+        query("SELECT COUNT(*) AS total FROM messes WHERE status = 'pending'"),
         query(
             `SELECT u.user_id, u.full_name, u.email, u.phone, mp.nid_no, mp.address, u.created_at,
                     me.mess_id, me.mess_name, me.status AS mess_status
@@ -14,7 +20,9 @@ async function pending(req, res) {
                JOIN users AS u ON u.user_id = mp.manager_id
                LEFT JOIN messes AS me ON me.manager_id = mp.manager_id
               WHERE mp.is_verified = 0 AND u.is_active = 1
-              ORDER BY u.created_at`
+              ORDER BY u.created_at
+              LIMIT ? OFFSET ?`,
+            [limit, (managersPage - 1) * limit]
         ),
         query(
             `SELECT me.mess_id, me.mess_name, me.mess_type, me.address, a.area_name, me.created_at,
@@ -26,10 +34,17 @@ async function pending(req, res) {
                JOIN users AS u ON u.user_id = me.manager_id
                JOIN manager_profiles AS mp ON mp.manager_id = me.manager_id
               WHERE me.status = 'pending'
-              ORDER BY me.created_at`
+              ORDER BY me.created_at
+              LIMIT ? OFFSET ?`,
+            [limit, (messesPage - 1) * limit]
         ),
     ]);
-    res.json({ managers, messes });
+
+    const wrap = (data, page, total) => ({ data, page, limit, total, total_pages: Math.ceil(total / limit) });
+    res.json({
+        managers: wrap(managers, managersPage, managerTotal[0].total),
+        messes: wrap(messes, messesPage, messTotal[0].total),
+    });
 }
 
 // PATCH /api/admin/managers/:id/verify
