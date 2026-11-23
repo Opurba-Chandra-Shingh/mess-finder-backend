@@ -38,19 +38,23 @@ async function findOrCreateUniversity(connection, input) {
     const [same] = await connection.query('SELECT university_id FROM universities WHERE name = ?', [input.name]);
     if (same.length > 0) return same[0].university_id;
 
-    const [area] = await connection.query('SELECT area_id FROM areas WHERE area_id = ?', [input.areaId]);
-    if (area.length === 0) throw new AppError(400, 'Area not found');
+    const [existingArea] = await connection.query('SELECT area_id FROM areas WHERE LOWER(area_name) = LOWER(?)', [input.areaName]);
+    let areaId = existingArea.length ? existingArea[0].area_id : null;
+    if (!areaId) {
+        const [createdArea] = await connection.query('INSERT INTO areas (area_name) VALUES (?)', [input.areaName]);
+        areaId = createdArea.insertId;
+    }
 
-    let [places] = await connection.query('SELECT AVG(latitude) AS lat, AVG(longitude) AS lng FROM universities WHERE area_id = ?', [input.areaId]);
+    let [places] = await connection.query('SELECT AVG(latitude) AS lat, AVG(longitude) AS lng FROM universities WHERE area_id = ?', [areaId]);
     if (places[0].lat === null) {
         [places] = await connection.query('SELECT AVG(latitude) AS lat, AVG(longitude) AS lng FROM universities');
     }
-    const latitude = places[0].lat === null ? 23.8103 : Number(places[0].lat);       // the middle of Dhaka, if nothing else is known
+    const latitude = places[0].lat === null ? 23.8103 : Number(places[0].lat);
     const longitude = places[0].lng === null ? 90.4125 : Number(places[0].lng);
 
     const [result] = await connection.query(
         'INSERT INTO universities (name, short_name, area_id, latitude, longitude) VALUES (?, ?, ?, ?, ?)',
-        [input.name, shortNameOf(input.name), input.areaId, latitude, longitude]
+        [input.name, shortNameOf(input.name), areaId, latitude, longitude]
     );
     return result.insertId;
 }
@@ -68,21 +72,12 @@ async function register(req, res) {
     // the extra details of each role
     let profile;
     if (role === 'student') {
-        // the university is chosen from the list (university_id) or added by the student (new_university)
-        let newUniversity = null;
-        let universityId = null;
-        if (body.university_id !== undefined && body.university_id !== null && body.university_id !== '') {
-            universityId = check.integer(body.university_id, 'University');
-        } else if (body.new_university && typeof body.new_university === 'object') {
-            newUniversity = {
-                name: check.text(body.new_university.name, 'University name', { min: 3, max: 150 }),
-                areaId: check.integer(body.new_university.area_id, 'Area of the university'),
-            };
-        } else {
-            throw new AppError(400, 'University is required');
-        }
+        // Students can enter any university and area; existing names are reused when possible.
+        const newUniversity = {
+            name: check.text(body.university_name, 'University name', { min: 3, max: 150 }),
+            areaName: check.text(body.area_name, 'Area', { min: 2, max: 80 }),
+        };
         profile = {
-            universityId,
             newUniversity,
             gender: check.oneOf(body.gender, 'Gender', ['male', 'female']),
             roll: check.optionalText(body.student_roll, 'Student roll', { max: 30 }),
@@ -106,9 +101,7 @@ async function register(req, res) {
         );
 
         if (role === 'student') {
-            const universityId = profile.newUniversity
-                ? await findOrCreateUniversity(connection, profile.newUniversity)
-                : profile.universityId;
+            const universityId = await findOrCreateUniversity(connection, profile.newUniversity);
             await connection.query(
                 'INSERT INTO student_profiles (student_id, university_id, student_roll, department, gender) VALUES (?, ?, ?, ?, ?)',
                 [result.insertId, universityId, profile.roll, profile.department, profile.gender]
